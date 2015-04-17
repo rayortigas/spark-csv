@@ -58,38 +58,41 @@ package object csv {
       sqlContext.baseRelationToDataFrame(csvRelation)
     }
 
-    def csvFileToRDD[T](
+    def csvFileToRDD[T: scala.reflect.runtime.universe.TypeTag : scala.reflect.ClassTag](
       filePath: String,
       useHeader: Boolean = true,
       delimiter: Char = ',',
       quote: Char = '"',
       escape: Char = '\\',
-      mode: String = "PERMISSIVE")(implicit manifest: Manifest[T]): RDD[T] = {
+      mode: String = "PERMISSIVE"): RDD[T] = {
 
-      // After getting the schema, the universe should've been initialized safely via spark-sql ScalaReflection.
-      // http://docs.scala-lang.org/overviews/reflection/thread-safety.html
       val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
+
       val df = csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
-      df.mapPartitions { iter =>
+      df.mapPartitions[T] { iter =>
         val rowConverter = RowConverter[T]()
         iter.map { row => rowConverter.convert(row) }
       }
     }
   }
 
-  case class RowConverter[T](implicit manifest: Manifest[T]) {
+  case class RowConverter[T]()(implicit ct: scala.reflect.ClassTag[T]) {
     // http://docs.scala-lang.org/overviews/reflection/environment-universes-mirrors.html#types-of-mirrors-their-use-cases--examples
+
+    // For Scala 2.10, because we're initializing the runtime universe, this is not thread-safe.
+    // http://docs.scala-lang.org/overviews/reflection/thread-safety.html
     val ru = scala.reflect.runtime.universe
-    val m = ru.runtimeMirror(getClass.getClassLoader)
-    val classT = ru.typeOf[T].typeSymbol.asClass
-    val cm = m.reflectClass(classT)
-    val ctorT = ru.typeOf[T].declaration(ru.nme.CONSTRUCTOR).asMethod
-    val ctorm = cm.reflectConstructor(ctorT)
+
+    val mirror = ru.runtimeMirror(getClass.getClassLoader)
+    val classSymbol = mirror.classSymbol(ct.runtimeClass)
+    val classMirror = mirror.reflectClass(classSymbol)
+    val constructorSymbol = classSymbol.toType.declaration(ru.nme.CONSTRUCTOR).asMethod
+    val constructorMirror = classMirror.reflectConstructor(constructorSymbol)
 
     def convert(row: Row): T = {
       val args = row.toSeq
-      require(ctorT.paramss.head.size == args.size)
-      ctorm.apply(row.toSeq: _*).asInstanceOf[T]
+      require(constructorSymbol.paramss.head.size == args.size)
+      constructorMirror.apply(row.toSeq: _*).asInstanceOf[T]
     }
   }
 

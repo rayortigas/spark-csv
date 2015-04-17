@@ -18,7 +18,10 @@ package com.databricks.spark
 import org.apache.commons.csv.CSVFormat
 import org.apache.hadoop.io.compress.CompressionCodec
 
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SQLContext, DataFrame, Row}
+import org.apache.spark.sql.catalyst.ScalaReflection
+import org.apache.spark.sql.types.StructType
 
 package object csv {
 
@@ -51,6 +54,48 @@ package object csv {
         escape = '\\',
         parseMode = "PERMISSIVE")(sqlContext)
       sqlContext.baseRelationToDataFrame(csvRelation)
+    }
+  }
+  
+  implicit class CsvContextRDD(sqlContext: SQLContext) {
+    def csvFileToRDD[T](
+      filePath: String,
+      useHeader: Boolean = true,
+      delimiter: Char = ',',
+      quote: Char = '"',
+      escape: Char = '\\',
+      mode: String = "PERMISSIVE")(implicit manifest: Manifest[T]): RDD[T] = {
+      
+      val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
+      val csvRelation = CsvRelation(
+        location = filePath,
+        useHeader = useHeader,
+        delimiter = delimiter,
+        quote = quote,
+        escape = escape,
+        parseMode = mode,
+        userSchema = schema)(sqlContext)
+      val df = sqlContext.baseRelationToDataFrame(csvRelation)
+      df.mapPartitions { iter =>
+        val rowConverter = RowConverter[T]()
+        iter.map { row => rowConverter.convert(row) }
+      }
+    }
+  }
+  
+  case class RowConverter[T](implicit manifest: Manifest[T]) {
+    // http://docs.scala-lang.org/overviews/reflection/environment-universes-mirrors.html#types-of-mirrors-their-use-cases--examples
+    val ru = scala.reflect.runtime.universe
+    val m = ru.runtimeMirror(getClass.getClassLoader)
+    val classT = ru.typeOf[T].typeSymbol.asClass
+    val cm = m.reflectClass(classT)
+    val ctorT = ru.typeOf[T].declaration(ru.nme.CONSTRUCTOR).asMethod
+    val ctorm = cm.reflectConstructor(ctorT)
+  
+    def convert(row: Row): T = {
+      val args = row.toSeq
+      require(ctorT.paramss.head.size == args.size)
+      ctorm.apply(row.toSeq: _*).asInstanceOf[T]
     }
   }
   

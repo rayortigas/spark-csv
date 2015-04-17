@@ -34,14 +34,16 @@ package object csv {
                 delimiter: Char = ',',
                 quote: Char = '"',
                 escape: Char = '\\',
-                mode: String = "PERMISSIVE") = {
+                mode: String = "PERMISSIVE",
+                schema: Option[StructType] = None) = {
       val csvRelation = CsvRelation(
         location = filePath,
         useHeader = useHeader,
         delimiter = delimiter,
         quote = quote,
         escape = escape,
-        parseMode = mode)(sqlContext)
+        parseMode = mode,
+        userSchema = schema.orNull)(sqlContext)
       sqlContext.baseRelationToDataFrame(csvRelation)
     }
 
@@ -55,9 +57,7 @@ package object csv {
         parseMode = "PERMISSIVE")(sqlContext)
       sqlContext.baseRelationToDataFrame(csvRelation)
     }
-  }
-  
-  implicit class CsvContextRDD(sqlContext: SQLContext) {
+
     def csvFileToRDD[T](
       filePath: String,
       useHeader: Boolean = true,
@@ -65,24 +65,18 @@ package object csv {
       quote: Char = '"',
       escape: Char = '\\',
       mode: String = "PERMISSIVE")(implicit manifest: Manifest[T]): RDD[T] = {
-      
+
+      // After getting the schema, the universe should've been initialized safely via spark-sql ScalaReflection.
+      // http://docs.scala-lang.org/overviews/reflection/thread-safety.html
       val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
-      val csvRelation = CsvRelation(
-        location = filePath,
-        useHeader = useHeader,
-        delimiter = delimiter,
-        quote = quote,
-        escape = escape,
-        parseMode = mode,
-        userSchema = schema)(sqlContext)
-      val df = sqlContext.baseRelationToDataFrame(csvRelation)
+      val df = csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
       df.mapPartitions { iter =>
         val rowConverter = RowConverter[T]()
         iter.map { row => rowConverter.convert(row) }
       }
     }
   }
-  
+
   case class RowConverter[T](implicit manifest: Manifest[T]) {
     // http://docs.scala-lang.org/overviews/reflection/environment-universes-mirrors.html#types-of-mirrors-their-use-cases--examples
     val ru = scala.reflect.runtime.universe
@@ -91,14 +85,14 @@ package object csv {
     val cm = m.reflectClass(classT)
     val ctorT = ru.typeOf[T].declaration(ru.nme.CONSTRUCTOR).asMethod
     val ctorm = cm.reflectConstructor(ctorT)
-  
+
     def convert(row: Row): T = {
       val args = row.toSeq
       require(ctorT.paramss.head.size == args.size)
       ctorm.apply(row.toSeq: _*).asInstanceOf[T]
     }
   }
-  
+
   implicit class CsvSchemaRDD(dataFrame: DataFrame) {
 
     /**

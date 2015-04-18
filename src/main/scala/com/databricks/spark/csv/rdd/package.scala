@@ -13,10 +13,12 @@ package object rdd {
       delimiter: Char = ',',
       quote: Char = '"',
       escape: Char = '\\',
-      mode: String = "PERMISSIVE"): RDD[T] = {
+      mode: String = "DROPMALFORMED"): RDD[T] = {
+
+      if (mode == util.ParseModes.PERMISSIVE_MODE)
+        throw new IllegalArgumentException(s"permissive mode is invalid for this method")
 
       val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
-
       val df = csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
       df.mapPartitions[T] { iter =>
         val rowConverter = RowConverter[T]()
@@ -41,7 +43,7 @@ package object rdd {
     def convert(row: Row): T = {
       val args = row.toSeq
       require(constructorSymbol.paramss.head.size == args.size)
-      constructorMirror.apply(row.toSeq: _*).asInstanceOf[T]
+      constructorMirror.apply(args: _*).asInstanceOf[T]
     }
   }
 }

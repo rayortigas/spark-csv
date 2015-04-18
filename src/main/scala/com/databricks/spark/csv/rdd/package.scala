@@ -6,7 +6,7 @@ import org.apache.spark.sql.catalyst.ScalaReflection
 import org.apache.spark.sql.types.StructType
 
 package object rdd {
-  implicit class CsvContextRDD(sqlContext: SQLContext) extends CsvContext(sqlContext) {
+  implicit class CsvContextRDD(sqlContext: SQLContext) {
     def csvFileToRDD[T: scala.reflect.runtime.universe.TypeTag : scala.reflect.ClassTag](
       filePath: String,
       useHeader: Boolean = true,
@@ -19,7 +19,7 @@ package object rdd {
         throw new IllegalArgumentException(s"permissive mode is invalid for this method")
 
       val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
-      val df = csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
+      val df = new CsvContext(sqlContext).csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
       df.mapPartitions[T] { iter =>
         val rowConverter = RowConverter[T]()
         iter.map { row => rowConverter.convert(row) }

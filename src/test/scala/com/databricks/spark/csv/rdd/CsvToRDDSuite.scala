@@ -43,4 +43,5 @@ class CsvToRDDSuite extends FunSuite with Matchers {
   }
 }
 
+// Currently we can only materialize RDDs of non-inner case classes.
 case class Car(year: Int, make: String, model: String, comment: String, stocked: Int, price: Double)

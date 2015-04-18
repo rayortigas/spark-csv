@@ -25,6 +25,13 @@ package object rdd {
         iter.map { row => rowConverter.convert(row) }
       }
     }
+
+    def tsvFileToRDD[T: scala.reflect.runtime.universe.TypeTag : scala.reflect.ClassTag](
+      filePath: String,
+      useHeader: Boolean = true,
+      mode: String = "DROPMALFORMED"): RDD[T] = {
+      csvFileToRDD[T](filePath, useHeader, delimiter = '\t', quote = '"', escape = '\\', mode)
+    }
   }
 
   case class RowConverter[T]()(implicit ct: scala.reflect.ClassTag[T]) {

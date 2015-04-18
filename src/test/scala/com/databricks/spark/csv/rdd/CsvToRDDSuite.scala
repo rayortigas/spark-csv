@@ -27,6 +27,12 @@ class CsvToRDDSuite extends FunSuite with Matchers {
       println(rdd.collect())
     }
   }
+
+  test("DSL for RDD with PERMISSIVE parsing mode") {
+    intercept[IllegalArgumentException] {
+      TestSQLContext.csvFileToRDD[Car](carsFile, mode = "PERMISSIVE")
+    }
+  }
 }
 
 case class Car(year: Int, make: String, model: String, comment: String, stocked: Int, price: Double)

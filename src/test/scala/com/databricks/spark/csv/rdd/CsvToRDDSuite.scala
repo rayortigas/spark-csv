@@ -10,6 +10,7 @@ import org.scalatest.Matchers
 // There is no workaround for Eclipse.
 // See https://issues.apache.org/jira/browse/SPARK-5281.
 class CsvToRDDSuite extends FunSuite with Matchers {
+  import CsvToRDDSuite._
   import TestSQLContext._
 
   val carsFile = "src/test/resources/cars-with-typed-columns.csv"
@@ -49,7 +50,16 @@ class CsvToRDDSuite extends FunSuite with Matchers {
       TestSQLContext.csvFileToRDD[Car](carsFile, mode = "PERMISSIVE")
     }
   }
+
+  test("DSL for RDD with invalid type argument") {
+    intercept[IllegalArgumentException] {
+      TestSQLContext.csvFileToRDD[CarWithNonPrimitive](carsFile)
+    }
+  }
 }
 
-// Currently we can only materialize RDDs of non-inner case classes.
-case class Car(year: Int, make: String, model: String, comment: String, stocked: Int, price: Double)
+object CsvToRDDSuite {
+  case class Car(year: Int, make: String, model: String, comment: String, stocked: Int, price: Double)
+  case class CarWithNonPrimitive(year: Int, makeAndModel: MakeAndModel, comment: String, stocked: Int, price: Double)
+  case class MakeAndModel(make: String, model: String)
+}

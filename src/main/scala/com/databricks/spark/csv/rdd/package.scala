@@ -19,6 +19,9 @@ package object rdd {
         throw new IllegalArgumentException(s"permissive mode is invalid for this method")
 
       val schema = ScalaReflection.schemaFor[T].dataType.asInstanceOf[StructType]
+      if (schema.exists { structField => !structField.dataType.isPrimitive })
+        throw new IllegalArgumentException(s"type must be a case class with only primitive fields")
+
       val df = new CsvContext(sqlContext).csvFile(filePath, useHeader, delimiter, quote, escape, mode, Some(schema))
       df.mapPartitions[T] { iter =>
         val rowConverter = RowConverter[T]()

@@ -20,6 +20,13 @@ class CsvToRDDSuite extends FunSuite with Matchers {
       Car(2012, "Tesla", "S", "No comment", 1, 350000.00),
       Car(1997, "Ford", "E350", "Go get one now they are going fast", 3, 25000.00))
   }
+
+  test("DSL for RDD with FAILFAST parsing mode") {
+    intercept[org.apache.spark.SparkException] {
+      val rdd = TestSQLContext.csvFileToRDD[Car](carsFile, mode = "FAILFAST")
+      println(rdd.collect())
+    }
+  }
 }
 
 case class Car(year: Int, make: String, model: String, comment: String, stocked: Int, price: Double)
